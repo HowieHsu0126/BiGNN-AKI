@@ -1,3 +1,5 @@
+# OSX file 
+.DS_Store
 /home/hwxu/Projects/Dataset/PKU/eICU/csv/*
 /home/hwxu/Projects/Dataset/PKU/mimic/csv/*
 eICU/csv/aki_eicu.csv
