@@ -7,27 +7,19 @@ DROP TABLE IF EXISTS final_aki_status;
 
 -- 创建最终AKI状态表，同时考虑RRT状态
 CREATE TABLE final_aki_status AS
-SELECT
-    cr.patientunitstayid,
-    cr.aki_status AS aki_status_cr,
-    uo.aki_status AS aki_status_uo,
-    CASE
-        WHEN rrt.patientunitstayid IS NOT NULL THEN 'AKI'  -- 如果在ICU前接受了RRT，则标记为AKI
-        ELSE CASE
-            WHEN cr.aki_status LIKE 'AKI%' OR uo.aki_status = 'AKI' THEN 'AKI'
-            ELSE 'Non-AKI'
-        END
-    END AS final_aki_status,
+SELECT 
+    ac.patientunitstayid,
     CASE 
-        WHEN rrt.patientunitstayid IS NOT NULL THEN 'AKI'  -- 标记RRT AKI状态
-        ELSE 'Non-AKI'
-    END AS rrt_aki_status
-FROM
-    aki_cr cr
-LEFT JOIN
-    aki_uo uo ON cr.patientunitstayid = uo.patientunitstayid
-LEFT JOIN
-    aki_rrt rrt ON cr.patientunitstayid = rrt.patientunitstayid;
+        WHEN (ac.aki_status = 'AKI within 48h' OR ac.aki_status = 'AKI within 7days' OR uo.aki_status = 'AKI') 
+             AND rrt.patientunitstayid IS NULL THEN 'ICU Acquired AKI'
+        ELSE 'No ICU Acquired AKI' 
+    END AS final_aki_status
+FROM aki_cr ac
+LEFT JOIN aki_uo uo ON ac.patientunitstayid = uo.patientunitstayid
+LEFT JOIN aki_rrt rrt ON ac.patientunitstayid = rrt.patientunitstayid
+GROUP BY ac.patientunitstayid, final_aki_status
+ORDER BY ac.patientunitstayid;
+
 
 -- 将最终的AKI状态数据导出到CSV文件
 COPY final_aki_status TO '/home/hwxu/Projects/Dataset/PKU/eICU/csv/aki_eicu.csv' DELIMITER ',' CSV HEADER;

@@ -1,22 +1,41 @@
--- 用于确定基线肌酐水平
--- 目的: 确定患者在进入ICU前3个月内至ICU入住时的首个肌酐值。
--- 操作: 使用WITH语句创建一个临时表，筛选出肌酐实验室结果，并通过ROW_NUMBER()函数按照时间顺序对每个患者的结果进行排序。最终选择每个患者的第一个肌酐值及其对应的时间偏移量。
+-- 用于确定稳定的基线肌酐水平
+-- 目的: 确定患者在进入ICU前3个月内至ICU入住时的稳定肌酐值。
+-- 操作: 首先筛选出特定时间窗口内的肌酐实验室结果。然后计算这段时间内肌酐值的平均值，并选择最接近平均值的记录作为稳定值。
 
 DROP VIEW IF EXISTS baseline_creat_view;
+
 CREATE VIEW baseline_creat_view AS
-WITH tempo AS (
-    SELECT patientunitstayid,
-           labname,
-           labresultoffset,
-           labresult,
-           ROW_NUMBER() OVER (PARTITION BY patientunitstayid, labname ORDER BY labresultoffset ASC) AS POSITION
+WITH creatinine_measurements AS (
+    SELECT 
+        patientunitstayid,
+        labresultoffset,
+        labresult,
+        ROW_NUMBER() OVER (PARTITION BY patientunitstayid ORDER BY labresultoffset ASC) AS row_num
     FROM eicu_crd.lab
     WHERE labname = 'creatinine'
-      AND labresultoffset BETWEEN -902460 AND 0
+      AND labresultoffset BETWEEN -129600 AND 0  -- -129600 minutes = -90 days
+),
+average_creatinine AS (
+    SELECT
+        patientunitstayid,
+        AVG(labresult) AS avg_creatinine
+    FROM creatinine_measurements
+    GROUP BY patientunitstayid
+),
+closest_to_average AS (
+    SELECT 
+        cm.patientunitstayid,
+        cm.labresult AS stable_creatinine,
+        cm.labresultoffset AS stable_creat_offset,
+        ABS(cm.labresult - ac.avg_creatinine) AS diff
+    FROM creatinine_measurements cm
+    JOIN average_creatinine ac ON cm.patientunitstayid = ac.patientunitstayid
+    ORDER BY diff ASC, cm.labresultoffset DESC
 )
-SELECT patientunitstayid,
-       MAX(CASE WHEN labname = 'creatinine' AND POSITION = 1 THEN labresult ELSE NULL END) AS creat1,
-       MAX(CASE WHEN labname = 'creatinine' AND POSITION = 1 THEN labresultoffset ELSE NULL END) AS creat1offset
-FROM tempo
+SELECT
+    patientunitstayid,
+    MIN(stable_creatinine) AS stable_creatinine,  -- 选择最接近平均值的肌酐值
+    MIN(stable_creat_offset) AS stable_creat_offset  -- 对应的时间偏移
+FROM closest_to_average
 GROUP BY patientunitstayid
 ORDER BY patientunitstayid;
