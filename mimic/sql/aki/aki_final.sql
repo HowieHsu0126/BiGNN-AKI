@@ -59,21 +59,20 @@ WITH pre_icu_rrt AS (
     LEFT JOIN aki_uo uo ON cr.stay_id = uo.stay_id
     LEFT JOIN icu_rrt rrt ON cr.stay_id = rrt.stay_id
 )
-, final_aki AS (
-    SELECT
-        stay_id AS patientunitstayid
-        , CASE 
-            WHEN (aki_status_cr = 'AKI' OR aki_status_uo = 'AKI') AND COALESCE(rrt_pre_icu, FALSE) = FALSE
-            THEN 'ICU Acquired AKI'
-            ELSE 'No ICU Acquired AKI'
-          END AS final_aki_status
-    FROM combined_aki
-    GROUP BY stay_id, aki_status_cr, aki_status_uo, rrt_pre_icu
-)
-
 SELECT
-    patientunitstayid
-    , final_aki_status
-FROM final_aki;
+    stay_id AS patientunitstayid
+    , CASE 
+        WHEN (aki_status_cr = 'AKI' OR aki_status_uo = 'AKI') AND COALESCE(rrt_pre_icu, FALSE) = FALSE
+        THEN 'ICU Acquired AKI'
+        ELSE 'No ICU Acquired AKI'
+      END AS final_aki_status
+FROM combined_aki
+GROUP BY stay_id, aki_status_cr, aki_status_uo, rrt_pre_icu;
 
-COPY aki_final TO '/home/hwxu/Projects/Dataset/PKU/mimic/csv/aki_mimic.csv' DELIMITER ',' CSV HEADER;
+COPY (
+    SELECT
+        *
+    FROM aki_final
+    WHERE 
+        final_aki_status = 'ICU Acquired AKI'
+) TO '/home/hwxu/Projects/Dataset/PKU/mimic/csv/aki_mimic.csv' WITH CSV HEADER;
